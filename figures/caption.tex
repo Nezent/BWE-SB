@@ -1,0 +1,39 @@
+% Caption for the architecture figure.
+\caption{%
+  Proposed degradation-aware, amplitude-focused bandwidth extension with a Schr\"odinger
+  bridge. This is a single architecture, not an ablation: the trunk is a selective state
+  space model in both streams, and every component shown is active in the trained model.
+  Blue blocks are cited: STFT/iSTFT, the anti-wrapping phase losses and the MRAD/MRPD
+  discriminators follow AP-BWE~\cite{lu2024apbwe}; the Lattice coupling follows
+  CIS-BWE~\cite{tamiti2026cisbwe}. Orange blocks with a numbered badge are this work.
+  \badgenum{1}~a blind encoder infers an eight-dimensional degradation descriptor from
+  the narrowband input alone; its embedding $\mathbf e$ conditions every Lattice stage.
+  \badgenum{2}~its cutoff estimate $k_c$ builds a coarse wideband (SBR) prior that serves
+  three roles at once: a second input channel, the base the magnitude head predicts a
+  residual on, and the bridge endpoint $x_0$.
+  adgenum{3}~a selective state space trunk in both streams, with separate weights per stream.
+  \badgenum{4}~quantum-inspired amplitude modules: a state-encoding angle/amplitude
+  embedding at the input and a tensor-train (MPS) output head that is
+  $3.8\times$ smaller than the dense projection it replaces.
+  \badgenum{5}~a Schr\"odinger bridge between the observed and clean pairs, with phase
+  bridged on the unit circle. Because the SBR prior is the endpoint, the bridge corrects
+  a band that is already filled rather than inventing one. Under the data-prediction
+  parameterisation $N{=}1$ reduces exactly to the feed-forward model, so the iterative
+  cost is opt-in.
+  \badgenum{6}~the phase path is driven by instantaneous frequency and group delay and
+  refined by a 2D, frequency-dilated head on baseband phase differences, which removes
+  the deterministic $2\pi mH/N$ ramp~\cite{gaznepoglu2026vocos}; it is held at a setting
+  whose APD already matches AP-BWE's.
+  \badgenum{7}~an amplitude-heavy critic set: UHD scores the log-frequency magnitude
+  envelope and SBMD returns per-band local verdicts, with BiCoD as a cheap phase floor
+  that asks whether the synthesised band is phase-locked to the observed one.
+  \badgenum{8}~an output-side baseband graft. Everything below $k_c$ was handed to the
+  model, so it is restored through a raised-cosine crossover rather than re-synthesised.
+  \badgenum{9}~three amplitude losses that the usual log-amplitude MSE cannot supply:
+  spectral convergence is relative and therefore scale-sensitive, so a uniform gain error
+  cannot be carried for free; per-band energy in dB is the coarse-grained form of the LSD
+  metric itself; and a multi-resolution log-magnitude $L_1$ constrains spectral shape.
+  On 4\,kHz$\to$16\,kHz VCTK after
+  6{,}250 steps on 2{,}000 training files it reaches LSD 1.20, NISQA-MOS 3.39, PESQ 2.20, STOI 0.925 and
+  SI-SDR 11.7\,dB on the official test speakers, with checkpoint selection on held-out training speakers.%
+}

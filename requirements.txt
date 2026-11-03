@@ -1,0 +1,17 @@
+torch
+torchaudio
+torchcodec
+numpy
+scipy
+pandas
+matplotlib
+soundfile
+librosa
+pesq
+pystoi
+pyyaml
+tqdm
+rich
+thop
+datasets
+huggingface_hub

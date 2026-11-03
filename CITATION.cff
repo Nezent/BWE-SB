@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below and cite the AP-BWE, CIS-BWE and UDSS-BWE papers it builds on."
+title: "BWE-SB: degradation-aware speech bandwidth extension with a Schrödinger bridge"
+version: 0.1.0
+date-released: 2026-11-03
+license: MIT
+repository-code: "https://github.com/Nezent/BWE-SB"
+authors:
+  - name: "Nezent"
+keywords:
+  - speech bandwidth extension
+  - Schrödinger bridge
+  - state space models
+  - tensor networks

@@ -1,0 +1,33 @@
+"""Cross-sensor test: fetch and align Vibravox, score every run on it, draw the transfer figure."""
+import argparse
+import sys
+from pathlib import Path
+
+import warnings
+import matplotlib
+matplotlib.use("Agg")
+warnings.filterwarnings("ignore", message="Matplotlib is currently using agg")
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from bwe_sb import config as C
+from bwe_sb import namespace as NS
+from bwe_sb import report
+from bwe_sb import cross_sensor as X
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config", default="configs/4kto16k.json")
+    ap.add_argument("--runs", required=True)
+    ap.add_argument("--nisqa-dir", default=None)
+    a = ap.parse_args()
+    cfg = C.load(a.config, "short")
+    runs = Path(a.runs)
+    R = NS.build(cfg, runs, runs.parent, nisqa_dir=a.nisqa_dir)
+    report.results(R)
+    for step in X.STEPS:
+        step(R)
+
+
+if __name__ == "__main__":
+    main()

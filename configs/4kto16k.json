@@ -1,0 +1,140 @@
+{
+  "task": {
+    "name": "4kto16k",
+    "hr_sampling_rate": 16000,
+    "lr_sampling_rate": 4000
+  },
+  "stft": {
+    "n_fft": 1024,
+    "hop_size": 80,
+    "win_size": 320
+  },
+  "optim": {
+    "batch_size": 16,
+    "segment_size": 8000,
+    "learning_rate": 0.0002,
+    "adam_b1": 0.8,
+    "adam_b2": 0.99,
+    "lr_decay": 0.999,
+    "seed": 1234,
+    "num_workers": 4
+  },
+  "model": {
+    "gen_amp_depth": 3,
+    "gen_pha_depth": 3,
+    "gen_amp_head": "mps",
+    "gen_amp_qfeat": "angle",
+    "gen_dim": 512,
+    "gen_lattice": 2,
+    "gen_pre_kernel_mag": 1,
+    "gen_pre_kernel_pha": 7,
+    "gen_phase_deriv": "only",
+    "gen_phase_mode": "residual",
+    "gen_mag_fusion": true,
+    "gen_phase_2d": true,
+    "gen_hf_prior": true,
+    "gen_sb": true,
+    "gen_t_dim": 64,
+    "gen_mp_add": true,
+    "gen_adaln": true,
+    "gen_graft": 8,
+    "gen_amp_in_mps": true,
+    "gen_cond_dim": 64
+  },
+  "critics": [
+    "MRAD",
+    "MRPD",
+    "BiCoD",
+    "UHD",
+    "SBMD"
+  ],
+  "loss": {
+    "sc": 10.0,
+    "be": 3.0,
+    "lm": 5.0,
+    "hpc": 0.2,
+    "bpd": 1.0,
+    "adv_anchor": 1.0,
+    "adv_aux": 0.1,
+    "desc": 10.0,
+    "amp_loss_hf_only": true
+  },
+  "bridge": {
+    "sb_steps": 1,
+    "sb_sigma": 0.05,
+    "t_max": 0.3,
+    "x0_prior": true,
+    "precond": true
+  },
+  "degradation": {
+    "train_bank": "mixed",
+    "eval_banks": [
+      "sinc",
+      "mixed",
+      "unseen",
+      "aurora",
+      "R0",
+      "R1",
+      "R2",
+      "R3",
+      "R4"
+    ],
+    "cond_dim": 64
+  },
+  "split": {
+    "val_holdout": 200
+  },
+  "vibravox": {
+    "per_speaker": 4,
+    "max_scan": 4000,
+    "eval_files": 200
+  },
+  "tiers": {
+    "tiny": {
+      "train_files_cap": 20,
+      "epochs": 1,
+      "max_steps": 0,
+      "val_every": 2,
+      "ckpt_every": 2,
+      "val_files": 2,
+      "stats_files": 4,
+      "eval_max_recipes": 2,
+      "patience": 4,
+      "batch_size": 4
+    },
+    "probe": {
+      "train_files_cap": 2000,
+      "epochs": 50,
+      "max_steps": 750,
+      "val_every": 500,
+      "ckpt_every": 250,
+      "val_files": 4,
+      "stats_files": 8,
+      "eval_max_recipes": 2,
+      "patience": 0,
+      "vibravox": false
+    },
+    "short": {
+      "train_files_cap": 2000,
+      "epochs": 50,
+      "max_steps": 0,
+      "val_every": 1000,
+      "ckpt_every": 1000,
+      "val_files": 20,
+      "stats_files": 150,
+      "eval_max_recipes": 4,
+      "patience": 4
+    },
+    "full": {
+      "train_files_cap": 0,
+      "epochs": 3100,
+      "max_steps": 100000,
+      "val_every": 5000,
+      "ckpt_every": 5000,
+      "val_files": 50,
+      "stats_files": 500,
+      "eval_max_recipes": 0,
+      "patience": 4
+    }
+  }
+}

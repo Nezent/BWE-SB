@@ -105,7 +105,7 @@ If you use this code, please cite the paper and the works it builds on.
 ```bibtex
 @article{bwesb2026,
   title   = {Degradation-Aware Speech Bandwidth Extension with a Schr{\"o}dinger Bridge and Quantum-Inspired Amplitude Modelling},
-  author  = {S. Munir},
+  author  = {S. Munir, Tarikul Islam Tamiti},
   year    = {2026},
   note    = {Code: https://github.com/Nezent/BWE-SB}
 }

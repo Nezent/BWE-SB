@@ -15,24 +15,15 @@ import time
 
 
 def find_corpora(ns):
-    ns.EXT_DATASETS = {}
-    for pat in ('*/LibriSpeech/*', '*/libritts*', '*/daps*', '*/mls*', '*/common_voice*'):
-        for p in sorted(Path('/kaggle/input').glob(pat)):
-            if p.is_dir():
-                ns.EXT_DATASETS.setdefault(p.name, p)
-                break
     if not ns.EXT_DATASETS:
-        print('No second corpus attached. Add one in the Kaggle sidebar, or set EXT_DATASETS')
-        print("manually, e.g. EXT_DATASETS = {'libritts': Path('/kaggle/input/libritts/...')}")
-        print('\nModels are evaluated straight from', ns.RUNS)
-    else:
-        print('found:', {k: str(v) for k, v in ns.EXT_DATASETS.items()})
+        raise SystemExit('no second corpus given: pass --corpus NAME=DIR')
+    for k, v in ns.EXT_DATASETS.items():
+        if not Path(v).is_dir():
+            raise SystemExit(f'corpus {k}: {v} is not a directory')
+    print('corpora:', {k: str(v) for k, v in ns.EXT_DATASETS.items()})
 
 
 def score_runs(ns):
-    ns.EXT_BANKS = ['sinc', 'unseen', 'R4']
-    ns.EXT_MODELS = 3
-    ns.EXT_FILES = 150
     ns.ext_rows = []
     if ns.EXT_DATASETS:
         want = [n for n in ns.df[ns.df.name == ns.REF_RUN].name]
@@ -52,8 +43,7 @@ def score_runs(ns):
                     print(mname, 'on', dname, flush=True)
                     r = subprocess.run(cmd, cwd=ns.ROOT, env=ns.ENV)
                     if r.returncode != 0:
-                        print(f'!! failed ({r.returncode})')
-                        continue
+                        raise RuntimeError(f'{mname} on {dname} failed ({r.returncode})')
                 t = pd.read_csv(outf)
                 t['dataset'] = dname
                 t['model'] = mname
@@ -69,10 +59,8 @@ def score_runs(ns):
 
 
 def gap_figure(ns):
-    if not ns.ext_rows:
-        print('[skipped] cross-dataset figure: no second corpus attached (set EXT_DATASETS)')
     if ns.ext_rows:
-        mets = [m for m in ('lsd_hf', 'si_sdr', 'pesq', 'nisqa_mos', 'stoi') if m in ns.edf.columns]
+        mets = [m for m in ('lsd_hf', 'si_sdr', 'pesq', 'nisqa_mos', 'stoi') if m in ns.edf.columns and ns.edf[m].notna().any()]
         ds = sorted(ns.edf.dataset.unique())
         fig, axs = plt.subplots(1, len(mets), figsize=(4.0 * len(mets), 4.6), squeeze=False)
         vctk = ns.df.set_index('name')
@@ -90,7 +78,7 @@ def gap_figure(ns):
         fig.suptitle('In-domain VCTK against held-out corpora, clean band-limiting. A small gap is the generalisation claim.', y=1.02, fontsize=10)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'cross_dataset.png', dpi=140)
-        plt.show()
+        plt.close('all')
         fig, axs = plt.subplots(1, len(mets), figsize=(4.0 * len(mets), 4.6), squeeze=False)
         for a, m in zip(axs[0], mets):
             piv = ns.edf.pivot_table(index='model', columns='bank', values=m, aggfunc='mean')
@@ -106,7 +94,7 @@ def gap_figure(ns):
         fig.suptitle('Unseen corpus AND unseen degradation: the hardest cell in the study', y=1.02, fontsize=10)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'cross_dataset_degraded.png', dpi=140)
-        plt.show()
+        plt.close('all')
 
 
 STEPS = [find_corpora, score_runs, gap_figure]

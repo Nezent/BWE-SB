@@ -5,3 +5,4 @@ NISQA/
 *.pt
 *.wav
 .DS_Store
+.venv/

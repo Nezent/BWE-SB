@@ -22,8 +22,9 @@ def main():
     ap.add_argument("--out", default=None, help="figure directory; default <runs>/../figures")
     ap.add_argument("--splits", default=None)
     ap.add_argument("--only", nargs="*", default=None, help="subset of step names to run")
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override any config key, e.g. vibravox.max_scan=200")
     a = ap.parse_args()
-    cfg = C.load(a.config, "short")
+    cfg = C.load(a.config, "short", dict(kv.split("=", 1) for kv in a.set))
     runs = Path(a.runs)
     R = NS.build(cfg, runs, runs.parent, figs_dir=a.out, split_dir=a.splits or runs.parent)
     done, failed = [], []

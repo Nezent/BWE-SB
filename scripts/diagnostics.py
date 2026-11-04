@@ -21,8 +21,9 @@ def main():
     ap.add_argument("--wav-dir", required=True)
     ap.add_argument("--splits", required=True)
     ap.add_argument("--skip", nargs="*", default=[], choices=["health", "oracle", "sweep"])
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override any config key, e.g. vibravox.max_scan=200")
     a = ap.parse_args()
-    cfg = C.load(a.config, "short")
+    cfg = C.load(a.config, "short", dict(kv.split("=", 1) for kv in a.set))
     runs = Path(a.runs)
     R = NS.build(cfg, runs, runs.parent, split_dir=a.splits, wav_dir=a.wav_dir)
     if "health" not in a.skip:

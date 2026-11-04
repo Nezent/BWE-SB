@@ -4,6 +4,9 @@ import torch.nn.functional as F
 import torch.nn as nn
 from torch.nn.utils import weight_norm, spectral_norm
 import numpy as np
+from typing import List, Tuple
+
+LRELU_SLOPE = 0.1
 
 def init_weights(m, mean=0.0, std=0.01):
     classname = m.__class__.__name__

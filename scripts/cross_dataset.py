@@ -20,8 +20,9 @@ def main():
     ap.add_argument("--config", default="configs/4kto16k.json")
     ap.add_argument("--runs", required=True)
     ap.add_argument("--corpus", action="append", default=[], metavar="NAME=DIR")
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override any config key, e.g. vibravox.max_scan=200")
     a = ap.parse_args()
-    cfg = C.load(a.config, "short")
+    cfg = C.load(a.config, "short", dict(kv.split("=", 1) for kv in a.set))
     runs = Path(a.runs)
     R = NS.build(cfg, runs, runs.parent)
     R.EXT_DATASETS = {k: Path(v) for k, v in (kv.split("=", 1) for kv in a.corpus)}

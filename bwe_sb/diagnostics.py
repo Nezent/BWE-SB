@@ -1,8 +1,12 @@
 """Post-training diagnostics: loss-curve health, magnitude/phase oracle, bridge step sweep."""
 from bwe_sb.data.dataset import Dataset, amp_pha_stft, amp_pha_istft
-from bwe_sb.models.critics.apbwe import APNet_BWE_Model as M
+from bwe_sb.models.generator import DualStreamBWE
+from bwe_sb import train as T
+
+
+class _H(dict):
+    __getattr__ = dict.get
 from pathlib import Path
-import gen_cnx
 import json
 import math
 import matplotlib
@@ -74,11 +78,7 @@ def oracle_decomposition(ns):
         d = ns.RUNS / run_name
         exp = json.loads((d / 'exp.json').read_text())
         h = _H(exp['cfg'])
-        if exp['generator'] == 'apbwe':
-            G = M(h)
-        else:
-            importlib.reload(gen_cnx)
-            G = gen_cnx.DualStreamBWE(h)
+        G = DualStreamBWE(h)
         G.load_state_dict(torch.load(d / 'ckpt.pt', map_location='cpu')['G'])
         G.eval()
         ds = Dataset(Path(exp['test_list']).read_text().split(), exp['wavs_dir'], h.segment_size, h.hr_sampling_rate, h.lr_sampling_rate, split=False, shuffle=False, n_cache_reuse=0)
@@ -134,26 +134,23 @@ def bridge_step_sweep(ns):
         if not (d / 'ckpt.pt').exists() or not (d / 'exp.json').exists():
             continue
         base = json.loads((d / 'exp.json').read_text())
-        for ns in STEP_GRID:
-            out = DIAG / f'{d.name}_sb{ns}'
+        for k in STEP_GRID:
+            out = DIAG / f'{d.name}_sb{k}'
             out.mkdir(parents=True, exist_ok=True)
             ck = out / 'ckpt.pt'
             if not ck.exists():
                 os.symlink(d / 'ckpt.pt', ck)
-            exp = dict(base, sb_steps=ns, out_dir=str(out), resume=True, minutes_budget=0, val_files=8, stats_files=0, eval_banks=['sinc', 'mixed', 'unseen'], eval_max_recipes=1)
+            exp = dict(base, sb_steps=k, out_dir=str(out), resume=True, minutes_budget=0, val_files=8, stats_files=0, eval_banks=['sinc', 'mixed', 'unseen'], eval_max_recipes=1)
             (out / 'exp.json').write_text(json.dumps(exp, indent=2))
             if (out / 'result.json').exists():
                 r = json.loads((out / 'result.json').read_text())
             else:
-                p = subprocess.run([sys.executable, '-u', 'train_abl.py', '--exp', str(out / 'exp.json')], cwd=ns.ROOT, env=ns.ENV, capture_output=True, text=True)
+                T.main(exp)
                 if not (out / 'result.json').exists():
-                    print(f'  !! {d.name} sb={ns} produced no result')
-                    print(p.stdout[-1500:])
-                    print(p.stderr[-1500:])
-                    continue
+                    raise RuntimeError(f'{d.name} sb={k} produced no result')
                 r = json.loads((out / 'result.json').read_text())
-            diag_rows.append(dict(model=d.name, sb_steps=ns, si_sdr=r.get('si_sdr'), lsd_hf=r.get('lsd_hf'), lsd=r.get('lsd'), alpha=r.get('alpha'), rtf=r.get('rtf')))
-            print(f"  {d.name:12s} sb={ns:<2d} SI-SDR {r.get('si_sdr'):7.2f}  LSD-HF {r.get('lsd_hf'):6.3f}  alpha {r.get('alpha'):5.3f}  RTF {r.get('rtf'):.3f}", flush=True)
+            diag_rows.append(dict(model=d.name, sb_steps=k, si_sdr=r.get('si_sdr'), lsd_hf=r.get('lsd_hf'), lsd=r.get('lsd'), alpha=r.get('alpha'), rtf=r.get('rtf')))
+            print(f"  {d.name:12s} sb={k:<2d} SI-SDR {r.get('si_sdr'):7.2f}  LSD-HF {r.get('lsd_hf'):6.3f}  alpha {r.get('alpha'):5.3f}  RTF {r.get('rtf'):.3f}", flush=True)
     sdf = pd.DataFrame(diag_rows)
     if len(sdf):
         ns.display(sdf.pivot(index='sb_steps', columns='model', values=['si_sdr', 'lsd_hf', 'alpha']).round(3))
@@ -171,7 +168,7 @@ def bridge_step_sweep(ns):
         fig.suptitle('Does iterating the bridge help, or compound a gain bias?', y=1.02)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'bridge_steps_diag.png', dpi=150, bbox_inches='tight')
-        plt.show()
+        plt.close('all')
         _ok = sdf.dropna(subset=['si_sdr'])
         if len(_ok):
             best = _ok.loc[_ok.groupby('model').lsd_hf.idxmin(), ['model', 'sb_steps', 'lsd_hf', 'si_sdr']]

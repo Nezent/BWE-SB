@@ -25,10 +25,12 @@ Zero-shot on Vibravox (in-ear microphone to headset reference, 84 pairs, French,
 
 ```
 pip install -r requirements.txt
-git clone --depth 1 https://github.com/gabrielmittag/NISQA.git   # optional, for NISQA-MOS
+git clone --depth 1 https://github.com/gabrielmittag/NISQA.git
 ```
 
-PyTorch and torchaudio are not pinned; any recent CUDA build works. `pesq` and `pystoi` need a C compiler.
+PyTorch and torchaudio are not pinned; any recent CUDA build works. `pesq` and `pystoi` need a C compiler. On macOS the forked data-loader workers can deadlock, so add `--set optim.num_workers=0` to the training command there; it changes nothing but speed.
+
+NISQA is a separate repository and cannot be vendored here, so it is cloned next to this one. Its code imports with the packages above and its weights (`weights/nisqa.tar`) come with the clone. Pass the clone to `train.py` and `vibravox.py` as `--nisqa-dir NISQA`: the trainer writes the extended test wavs for every evaluation bank under `work/runs/<name>/nisqa_wavs/`, runs NISQA's `run_predict.py` on each folder, and the per-bank means appear in the log as `NISQA-MOS:` and in `result.json` and `results_by_bank.csv` as `nisqa_mos`; the Vibravox step does the same for the in-ear pairs. Without the flag every run still completes and the `nisqa_mos` column is simply absent. `evaluate.py` scores arbitrary wavs without NISQA; point `run_predict.py` at its `--write-wavs` folder if you want the score there too.
 
 ## Data
 
@@ -105,7 +107,7 @@ If you use this code, please cite the paper and the works it builds on.
 ```bibtex
 @article{bwesb2026,
   title   = {Degradation-Aware Speech Bandwidth Extension with a Schr{\"o}dinger Bridge and Quantum-Inspired Amplitude Modelling},
-  author  = {Nezent},
+  author  = {Tamiti, Munir and others},
   year    = {2026},
   note    = {Code: https://github.com/Nezent/BWE-SB}
 }

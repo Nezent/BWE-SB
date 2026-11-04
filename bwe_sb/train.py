@@ -95,8 +95,8 @@ def main(exp=None):
                                     n_cache_reuse=0)
     dl = DataLoader(mk(tr_ids, True), batch_size=h.batch_size, shuffle=True,
                     num_workers=h.num_workers, pin_memory=True, drop_last=True)
-    vl_val = DataLoader(mk(va_ids, False), batch_size=1, shuffle=False, num_workers=1)
-    vl_test = DataLoader(mk(te_ids, False), batch_size=1, shuffle=False, num_workers=1)
+    vl_val = DataLoader(mk(va_ids, False), batch_size=1, shuffle=False, num_workers=0)
+    vl_test = DataLoader(mk(te_ids, False), batch_size=1, shuffle=False, num_workers=0)
 
     train_recipes = DG.bank(exp.get("train_bank", "sinc"))
     eval_banks = exp.get("eval_banks", ["sinc"])

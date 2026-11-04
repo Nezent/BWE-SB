@@ -1,6 +1,7 @@
 """Vibravox cross-sensor test: download and align the pairs, score every run, plot the transfer."""
 from pathlib import Path
-import importlib, vibravox
+from bwe_sb.data import vibravox
+from bwe_sb import evaluate as EV
 import json
 import math
 import matplotlib
@@ -22,7 +23,6 @@ def download_and_pair(ns):
     ns.VIB_LIST = ns.VIB / 'test.txt'
     if ns.VIBRAVOX and (not ns.VIB_LIST.exists()):
         subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'datasets'], check=False)
-        importlib.reload(vibravox)
         _saved = [p for p in sys.path if p == str(ns.REPO)]
         for p in _saved:
             sys.path.remove(p)
@@ -46,7 +46,6 @@ def download_and_pair(ns):
 
 def alignment_check(ns):
     if ns.vib_report:
-        importlib.reload(vibravox)
         ids = ns.VIB_LIST.read_text().split()
         lags = vibravox.residual_lags(ns.VIB_LR, ns.VIB_HR, ids, n=60)
         med = int(np.median(lags))
@@ -66,25 +65,67 @@ def alignment_check(ns):
         ax[1].legend(fontsize=8)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'vibravox_alignment.png', dpi=140)
-        plt.show()
+        plt.close('all')
         assert abs(med) <= 1, f'pairs still misaligned (median {med}). Phase metrics compare bin by bin, so this would score every model as noise. Delete {ns.VIB} and re-export.'
         print('aligned and polarity-corrected: safe to evaluate')
 
 
 def score_runs(ns):
-    Path(SRC / 'eval_ext.py').write_text('\nfrom __future__ import annotations\n\nimport argparse\nimport csv\nimport json\nimport sys\nfrom pathlib import Path\nfrom typing import Dict, List\n\nimport torch\nimport torchaudio\nimport torchaudio.functional as aF\n\ndef stft_pair():\n    """AP-BWE\'s amp_pha_stft / amp_pha_istft, from the repo if it is importable and from a\n    local copy otherwise. The local copy is what makes this file usable on its own: a\n    checkpoint is worth little if testing it needs the original repo checked out."""\n    try:\n        from bwe_sb.data.dataset import amp_pha_istft, amp_pha_stft\n        return amp_pha_stft, amp_pha_istft\n    except Exception:\n        pass\n\n    def amp_pha_stft(audio, n_fft, hop_size, win_size, center=True):\n        hann = torch.hann_window(win_size).to(audio.device)\n        spec = torch.stft(audio, n_fft, hop_length=hop_size, win_length=win_size,\n                          window=hann, center=center, pad_mode="reflect",\n                          normalized=False, return_complex=True)\n        log_amp = torch.log(torch.abs(spec) + 1e-4)\n        pha = torch.angle(spec)\n        com = torch.stack((torch.exp(log_amp) * torch.cos(pha),\n                           torch.exp(log_amp) * torch.sin(pha)), dim=-1)\n        return log_amp, pha, com\n\n    def amp_pha_istft(log_amp, pha, n_fft, hop_size, win_size, center=True):\n        amp = torch.exp(log_amp)\n        com = torch.complex(amp * torch.cos(pha), amp * torch.sin(pha))\n        hann = torch.hann_window(win_size).to(com.device)\n        return torch.istft(com, n_fft, hop_length=hop_size, win_length=win_size,\n                           window=hann, center=center)\n\n    print("  [eval_ext] AP-BWE repo not importable; using the bundled STFT pair")\n    return amp_pha_stft, amp_pha_istft\n\ndef load_model(path, dev):\n    """Rebuild the generator. Accepts either a model_final.pt export or a RUN DIRECTORY\n    holding ckpt.pt + exp.json.\n\n    The directory form matters when training and testing happen in the same notebook:\n    nothing has to be exported or kept, the checkpoint the trainer already wrote is\n    enough.\n    """\n    path = Path(path)\n    if path.is_dir():\n        ck = torch.load(path / "ckpt.pt", map_location=dev, weights_only=False)\n        exp = json.loads((path / "exp.json").read_text())\n        cfg = exp["cfg"]\n        blob = dict(format="bwe-export-1", name=exp["name"],\n                    generator=exp.get("generator", "cnx"), cfg=cfg,\n                    G=ck["G"], enc=ck.get("enc"),\n                    enc_emb=int(cfg.get("gen_cond_dim") or 0),\n                    n_bins=cfg["n_fft"] // 2 + 1,\n                    sr=cfg["hr_sampling_rate"], lr_sr=cfg["lr_sampling_rate"],\n                    n_fft=cfg["n_fft"], hop_size=cfg["hop_size"],\n                    win_size=cfg["win_size"],\n                    critics=exp.get("critics", []),\n                    train_bank=exp.get("train_bank", "sinc"),\n                    steps=int(ck.get("step", 0)), gen_params=0, enc_params=0)\n    else:\n        blob = torch.load(path, map_location=dev, weights_only=False)\n    assert blob.get("format") == "bwe-export-1", \\\n        f"{path} is neither a bwe export nor a run directory with ckpt.pt + exp.json"\n\n    class H(dict):\n        __getattr__ = dict.get\n    h = H(blob["cfg"])\n\n    if blob["generator"] == "apbwe":\n        from bwe_sb.models.critics.apbwe import APNet_BWE_Model\n        G = APNet_BWE_Model(h).to(dev)\n    else:\n        from bwe_sb.models.generator import DualStreamBWE\n        G = DualStreamBWE(h).to(dev)\n    G.load_state_dict(blob["G"])\n    G.eval()\n\n    enc = None\n    if blob.get("enc") is not None:\n        import bwe_sb.data.degrade as DG\n        enc = DG.DegradationEncoder(blob["n_bins"], emb=blob["enc_emb"] or 64).to(dev)\n        enc.load_state_dict(blob["enc"])\n        enc.eval()\n\n    @torch.no_grad()\n    def fwd(mag_i, pha_i):\n        if enc is None:\n            return G(mag_i, pha_i)\n        emb, _ = enc(mag_i)\n        return G(mag_i, pha_i, cond=emb)\n\n    return fwd, blob\n\ndef find_wavs(root, exts=(".wav", ".flac", ".mp3", ".ogg")):\n    root = Path(root)\n    if root.is_file():\n        return [root]\n    return sorted(p for p in root.rglob("*") if p.suffix.lower() in exts)\n\ndef _write(a, rows, banks):\n    """CSV plus a per-bank mean table; shared by the synthetic and paired modes."""\n    import numpy as np\n    assert rows, "nothing was evaluated"\n    cols = list(dict.fromkeys(k for r in rows for k in r))\n    with open(a.out, "w", newline="") as fh:\n        w = csv.DictWriter(fh, fieldnames=cols, restval="")\n        w.writeheader()\n        w.writerows(rows)\n    print(f"\\nwrote {len(rows)} rows to {a.out}")\n    num = [c for c in cols if c not in ("model", "dataset", "file", "bank", "recipe_idx")]\n    print(f"\\n{\'bank\':10s}" + "".join(f"{c:>11s}" for c in num[:9]))\n    for bname in banks:\n        sub = [r for r in rows if r["bank"] == bname]\n        if not sub:\n            continue\n        vals = [np.nanmean([r.get(c, np.nan) for r in sub]) for c in num[:9]]\n        print(f"{bname:10s}" + "".join(f"{v:11.3f}" for v in vals))\n\n@torch.no_grad()\ndef main(argv=None):\n    ap = argparse.ArgumentParser(description=__doc__,\n                                 formatter_class=argparse.RawDescriptionHelpFormatter)\n    ap.add_argument("--model", required=True,\n                    help="model_final.pt, or a run directory with ckpt.pt + exp.json")\n    ap.add_argument("--wavs", default=None,\n                    help="dataset directory (searched recursively); not needed in paired mode")\n    ap.add_argument("--banks", nargs="*", default=["sinc"],\n                    help="degradation banks to evaluate under (sinc mixed unseen aurora R0..R4)")\n    ap.add_argument("--paired-lr", default=None,\n                    help="PAIRED mode: directory of real degraded inputs (e.g. Vibravox "\n                         "in-ear). No synthetic degradation is applied.")\n    ap.add_argument("--paired-hr", default=None,\n                    help="PAIRED mode: directory of matching references, same filenames")\n    ap.add_argument("--paired-list", default=None,\n                    help="PAIRED mode: optional file of ids, one per line")\n    ap.add_argument("--bank-name", default="paired",\n                    help="PAIRED mode: label for the bank column")\n    ap.add_argument("--max-files", type=int, default=200)\n    ap.add_argument("--max-recipes", type=int, default=0, help="0 = every recipe")\n    ap.add_argument("--max-seconds", type=float, default=10.0, help="trim long files")\n    ap.add_argument("--out", default="ext_eval.csv")\n    ap.add_argument("--write-wavs", default=None, help="directory to save extended audio")\n    ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")\n    ap.add_argument("--no-perceptual", action="store_true",\n                    help="skip PESQ/STOI/MOS (much faster)")\n    a = ap.parse_args(argv)\n\n    dev = torch.device(a.device)\n    import bwe_sb.data.degrade as DG\n    import bwe_sb.metrics.metrics as MT\n    amp_pha_stft, amp_pha_istft = stft_pair()\n\n    fwd, blob = load_model(a.model, dev)\n    sr, n_fft, hop, win = blob["sr"], blob["n_fft"], blob["hop_size"], blob["win_size"]\n    _p = blob.get("gen_params") or 0\n    print(f"model: {blob[\'name\']}  ("\n          + (f"{_p/1e6:.2f}M params, " if _p else "")\n          + f"trained on \'{blob[\'train_bank\']}\' for {blob[\'steps\']} steps)")\n\n    if a.paired_lr:\n        assert a.paired_hr, "--paired-lr requires --paired-hr"\n        lrd, hrd = Path(a.paired_lr), Path(a.paired_hr)\n        if a.paired_list and Path(a.paired_list).exists():\n            ids = [l.strip() for l in Path(a.paired_list).read_text().split() if l.strip()]\n        else:\n            ids = sorted(p.stem for p in lrd.glob("*.wav"))\n        ids = [i for i in ids if (hrd / f"{i}.wav").exists()][: a.max_files]\n        assert ids, f"no paired files between {lrd} and {hrd}"\n        print(f"PAIRED: {len(ids)} pairs | input {lrd} | reference {hrd}")\n\n        rows = []\n        for i, fid in enumerate(ids):\n            lr, s1 = torchaudio.load(str(lrd / f"{fid}.wav"))\n            hr, s2 = torchaudio.load(str(hrd / f"{fid}.wav"))\n            lr, hr = lr.mean(0, keepdim=True), hr.mean(0, keepdim=True)\n            if s1 != sr:\n                lr = aF.resample(lr, s1, sr)\n            if s2 != sr:\n                hr = aF.resample(hr, s2, sr)\n            k = min(lr.shape[-1], hr.shape[-1])\n            if a.max_seconds:\n                k = min(k, int(a.max_seconds * sr))\n            lr, hr = lr[..., :k].to(dev), hr[..., :k].to(dev)\n            mi, pi, _ = amp_pha_stft(lr, n_fft, hop, win)\n            mg, pg, _ = fwd(mi, pi)\n            est = amp_pha_istft(mg, pg, n_fft, hop, win)\n            k2 = min(est.shape[-1], hr.shape[-1])\n            m = MT.evaluate(est[..., :k2], hr[..., :k2], sr, blob["lr_sr"] / 2,\n                            dev=dev, want_perceptual=not a.no_perceptual)\n            row = dict(model=blob["name"], dataset=str(lrd), file=fid,\n                       bank=a.bank_name, recipe_idx=0)\n            row.update({k3: v for k3, v in m.items() if isinstance(v, float)})\n            rows.append(row)\n            if a.write_wavs:\n                d = Path(a.write_wavs) / blob["name"] / a.bank_name\n                d.mkdir(parents=True, exist_ok=True)\n                torchaudio.save(str(d / f"{fid}.wav"), est[..., :k2].cpu().clamp(-1, 1), sr)\n            if (i + 1) % 25 == 0:\n                print(f"  {i+1}/{len(ids)}", flush=True)\n        _write(a, rows, [a.bank_name])\n        return 0\n\n    files = find_wavs(a.wavs)[: a.max_files]\n    assert files, f"no audio found under {a.wavs}"\n    print(f"dataset: {a.wavs}  ({len(files)} files)")\n\n    rows: List[Dict] = []\n    for bname in a.banks:\n        recipes = DG.bank(bname)\n        if a.max_recipes and len(recipes) > a.max_recipes:\n            recipes = recipes[: a.max_recipes]\n        for ri, recipe in enumerate(recipes):\n            for fi, f in enumerate(files):\n                try:\n                    x, osr = torchaudio.load(str(f))\n                except Exception as e:\n                    print(f"  skip {f.name}: {type(e).__name__}")\n                    continue\n                x = x.mean(0, keepdim=True)\n                if osr != sr:\n                    x = aF.resample(x, osr, sr)\n                if a.max_seconds:\n                    x = x[..., : int(a.max_seconds * sr)]\n                if x.shape[-1] < win * 2:\n                    continue\n                hr = x.to(dev)\n                lr, _ = DG.degrade(hr, sr, recipe)\n                mi, pi, _ = amp_pha_stft(lr, n_fft, hop, win)\n                mg, pg, _ = fwd(mi, pi)\n                est = amp_pha_istft(mg, pg, n_fft, hop, win)\n                k = min(est.shape[-1], hr.shape[-1])\n                m = MT.evaluate(est[..., :k], hr[..., :k], sr,\n                                recipe.get("cutoff", blob["lr_sr"]) / 2, dev=dev,\n                                want_perceptual=not a.no_perceptual)\n                row = dict(model=blob["name"], dataset=str(a.wavs), file=f.name,\n                           bank=bname, recipe_idx=ri)\n                row.update({k2: v for k2, v in m.items() if isinstance(v, float)})\n                rows.append(row)\n                if a.write_wavs:\n                    d = Path(a.write_wavs) / blob["name"] / bname\n                    d.mkdir(parents=True, exist_ok=True)\n                    torchaudio.save(str(d / f"{f.stem}.wav"),\n                                    est[..., :k].cpu().clamp(-1, 1), sr)\n            print(f"  {bname} recipe {ri+1}/{len(recipes)}: {len(rows)} rows", flush=True)\n\n    _write(a, rows, a.banks)\n    return 0\n\nif __name__ == "__main__":\n    sys.exit(main())\n')
-    print('eval_ext.py', (SRC / 'eval_ext.py').stat().st_size, 'bytes')
+    vib_rows = []
+    if ns.vib_report:
+        VEX = ns.WORK / 'vib_eval'
+        VEX.mkdir(exist_ok=True)
+        for d in sorted(ns.RUNS.iterdir()):
+            if not d.is_dir():
+                continue
+            outf = VEX / f'{d.name}.csv'
+            if not outf.exists():
+                if not ((d / 'ckpt.pt').exists() and (d / 'exp.json').exists()):
+                    continue
+                wav_root = VEX / 'wavs'
+                print('=' * 70)
+                print(d.name, flush=True)
+                rc = EV.main(['--model', str(d), '--paired-lr', str(ns.VIB_LR), '--paired-hr', str(ns.VIB_HR), '--paired-list', str(ns.VIB_LIST), '--bank-name', 'vibravox', '--max-files', str(ns.VIB_EVAL_FILES), '--out', str(outf), '--write-wavs', str(wav_root)])
+                if rc:
+                    raise RuntimeError(f'{d.name} failed on Vibravox')
+                wdir = wav_root / d.name / 'vibravox'
+                if ns.NISQA_DIR and Path(ns.NISQA_DIR).exists() and wdir.exists():
+                    r = subprocess.run([sys.executable, 'run_predict.py', '--mode', 'predict_dir', '--pretrained_model', str(Path(ns.NISQA_DIR) / 'weights' / 'nisqa.tar'), '--data_dir', str(wdir), '--num_workers', '0', '--bs', '10', '--output_dir', str(wdir)], cwd=str(ns.NISQA_DIR), capture_output=True, text=True)
+                    res_csv = wdir / 'NISQA_results.csv'
+                    if r.returncode != 0 or not res_csv.exists():
+                        raise RuntimeError(f'NISQA failed on Vibravox for {d.name}: {(r.stderr or r.stdout)[-600:]}')
+                    nq = pd.read_csv(res_csv)
+                    nq['file'] = nq['deg'].map(lambda p: Path(p).stem)
+                    t = pd.read_csv(outf)
+                    t = t.drop(columns=[c for c in ('nisqa_mos',) if c in t.columns])
+                    t = t.merge(nq[['file', 'mos_pred']].rename(columns={'mos_pred': 'nisqa_mos'}), on='file', how='left')
+                    t.to_csv(outf, index=False)
+                    print(f'  NISQA-MOS (Vibravox): {t.nisqa_mos.mean():.3f} over {t.nisqa_mos.notna().sum()} pairs', flush=True)
+            t = pd.read_csv(outf)
+            t['model'] = d.name
+            vib_rows.append(t)
+    if vib_rows:
+        ns.vdf = pd.concat(vib_rows, ignore_index=True)
+        ns.vdf.to_csv(ns.WORK / 'vibravox_results.csv', index=False)
+        VMETS = [m for m in ('lsd_hf', 'si_sdr', 'pesq', 'stoi', 'estoi', 'mos', 'nisqa_mos', 'apd_ip', 'alpha') if m in ns.vdf.columns]
+        ns.vsum = ns.vdf.groupby('model')[VMETS].mean().round(4)
+        print('\n--- Vibravox (cross-sensor, zero-shot from VCTK) ---')
+        ns.display(ns.vsum)
+        print(f'\n{len(ns.vdf)} pairs scored per model: {len(ns.vdf) // max(1, ns.vdf.model.nunique())}')
+    else:
+        ns.vdf = pd.DataFrame()
+        print('no Vibravox results')
 
 
 def transfer_figure(ns):
-    if len(vdf):
-        VMETS2 = [m for m in ('lsd_hf', 'si_sdr', 'pesq', 'stoi', 'nisqa_mos') if m in vdf.columns]
+    if len(ns.vdf):
+        VMETS2 = [m for m in ('lsd_hf', 'si_sdr', 'pesq', 'stoi', 'nisqa_mos') if m in ns.vdf.columns]
         vctk = ns.df.set_index('name')
         xs_rows = []
-        for mn in vsum.index:
+        for mn in ns.vsum.index:
             for m in VMETS2:
                 iv = float(vctk.loc[mn, m]) if mn in vctk.index and m in vctk else np.nan
-                xs_rows.append(dict(model=mn, metric=m, vctk=iv, vibravox=float(vsum.loc[mn, m])))
+                xs_rows.append(dict(model=mn, metric=m, vctk=iv, vibravox=float(ns.vsum.loc[mn, m])))
         xsdf = pd.DataFrame(xs_rows)
         xsdf['drop'] = np.where(xsdf.metric.isin(ns.LOWER), xsdf.vibravox - xsdf.vctk, xsdf.vctk - xsdf.vibravox)
         ns.display(xsdf.pivot_table(index='model', columns='metric', values=['vctk', 'vibravox', 'drop']).round(3))
@@ -102,19 +143,19 @@ def transfer_figure(ns):
             if ci == 0:
                 a.legend(fontsize=7)
             b = axs[1][ci]
-            ns.order = g['drop'].sort_values()
-            _bb = b.barh(np.arange(len(ns.order)), ns.order.values, color=['#6acc64' if v <= 0 else '#d65f5f' for v in ns.order.values])
+            order = g['drop'].sort_values()
+            _bb = b.barh(np.arange(len(order)), order.values, color=['#6acc64' if v <= 0 else '#d65f5f' for v in order.values])
             b.axvline(0, c='k', lw=0.8)
             b.bar_label(_bb, fmt='%+.3f', fontsize=7, padding=3)
             b.margins(x=0.2)
-            if len(ns.order) == 1:
+            if len(order) == 1:
                 b.set_ylim(-1.2, 1.2)
-            b.set(yticks=np.arange(len(ns.order)), title=f'{m} degradation\n(shorter = travels better)')
-            b.set_yticklabels(ns.order.index, fontsize=6)
+            b.set(yticks=np.arange(len(order)), title=f'{m} degradation\n(shorter = travels better)')
+            b.set_yticklabels(order.index, fontsize=6)
         fig.suptitle('VCTK-trained, Vibravox-tested. Top: absolute. Bottom: how much was lost.', y=1.0, fontsize=10)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'cross_sensor.png', dpi=140)
-        plt.show()
+        plt.close('all')
 
 
 STEPS = [download_and_pair, alignment_check, score_runs, transfer_figure]

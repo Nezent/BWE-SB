@@ -166,9 +166,8 @@ check("bridge output stays wrapped and finite",
       o4[1].abs().max() <= torch.pi + 1e-4 and torch.isfinite(o4[0]).all())
 
 print()
-print("6. PQMF high-band discriminator")
+print("6. amplitude losses stay bounded on silent / near-silent reference crops")
 print("=" * 72)
-print("8. amplitude losses stay bounded on silent / near-silent reference crops")
 import bwe_sb.losses.amplitude as LA
 
 _est = torch.randn(2, 8000) * 0.1

@@ -149,6 +149,7 @@ def main(argv=None):
     amp_pha_stft, amp_pha_istft = stft_pair()
 
     fwd, blob = load_model(a.model, dev)
+    DG.BASE = int(blob["lr_sr"])
     sr, n_fft, hop, win = blob["sr"], blob["n_fft"], blob["hop_size"], blob["win_size"]
     _p = blob.get("gen_params") or 0
     print(f"model: {blob['name']}  ("

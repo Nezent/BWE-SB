@@ -113,7 +113,7 @@ def leaderboard(ns):
     fig.suptitle('Every configuration, every metric', y=1.01)
     fig.tight_layout()
     fig.savefig(ns.FIGS / 'leaderboard_all_metrics.png', dpi=140, bbox_inches='tight')
-    plt.show()
+    plt.close('all')
 
 
 def robustness_banks(ns):
@@ -145,7 +145,7 @@ def robustness_banks(ns):
             ax[1].grid(alpha=0.3, axis='x')
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'robustness_banks.png', dpi=140, bbox_inches='tight')
-        plt.show()
+        plt.close('all')
 
 
 def per_recipe_heatmap(ns):
@@ -177,22 +177,7 @@ def per_recipe_heatmap(ns):
         fig.colorbar(im, ax=ax, shrink=0.7, label=_lab)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'per_recipe_heatmap.png', dpi=140, bbox_inches='tight')
-        plt.show()
-
-
-def quality_vs_params(ns):
-    fig, ax = plt.subplots(1, 2, figsize=(14, 5.5))
-    for a, m in zip(ax, ['lsd_hf', 'pesq' if 'pesq' in ns.df else 'si_sdr']):
-        for st, g in ns.df.groupby('backbone'):
-            a.scatter(g.gen_M, g[m].astype(float), s=70, label=st, color=ns.colors.get(st, '#bbb'))
-        for _, r in ns.df.iterrows():
-            a.annotate(r['name'][:24], (r.gen_M, float(r[m])), fontsize=5, xytext=(3, 3), textcoords='offset points')
-        a.set(xlabel='generator parameters (M)', ylabel=m, title=f"{m} vs parameters ({('lower' if m in ns.LOWER else 'higher')} is better)")
-        a.grid(alpha=0.3)
-        a.legend(fontsize=7)
-    fig.tight_layout()
-    fig.savefig(ns.FIGS / 'quality_vs_params.png', dpi=140, bbox_inches='tight')
-    plt.show()
+        plt.close('all')
 
 
 def curves(ns):
@@ -213,7 +198,7 @@ def curves(ns):
         fig.suptitle('Loss curves (a flat line at zero means that term is disabled for every run)')
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'curves.png', dpi=140, bbox_inches='tight')
-        plt.show()
+        plt.close('all')
 
 
 def lsd_bands(ns):
@@ -245,7 +230,7 @@ def lsd_bands(ns):
             ax[1].legend(fontsize=6)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'lsd_bands.png', dpi=140)
-        plt.show()
+        plt.close('all')
     else:
         print('no band-wise LSD columns - re-run training with the updated metrics module')
 
@@ -290,7 +275,7 @@ def spectrograms(ns):
         fig.suptitle(f"Spectrograms, held-out utterance {UTT}, bank '{BANK}', {ns.LR_SR // 1000} kHz -> {ns.sr // 1000} kHz. Dotted line = input cutoff; everything above it is synthesised.", y=1.0, fontsize=10)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'spectrograms.png', dpi=140)
-        plt.show()
+        plt.close('all')
 
         def logmag(x):
             X = np.abs(np.fft.rfft(np.lib.stride_tricks.sliding_window_view(x, 512)[::128] * np.hanning(512), axis=-1))
@@ -307,7 +292,7 @@ def spectrograms(ns):
             ax.grid(False)
         fig.colorbar(im, ax=axs[0], shrink=0.8, label='dB')
         fig.savefig(ns.FIGS / 'spectrogram_error.png', dpi=140, bbox_inches='tight')
-        plt.show()
+        plt.close('all')
     else:
         print('no samples.pt - re-run training with the updated trainer')
 
@@ -339,7 +324,7 @@ def radar(ns):
         ax.set_title('Every metric, rescaled so outward is always better\nblack dashed = reference arm baseline', fontsize=9)
         ax.legend(fontsize=6, loc='upper right', bbox_to_anchor=(1.32, 1.12))
         fig.savefig(ns.FIGS / 'radar.png', dpi=140)
-        plt.show()
+        plt.close('all')
 
 
 def robustness_curves(ns):
@@ -373,7 +358,7 @@ def robustness_curves(ns):
         fig.suptitle('Degradation sweeps on single-factor recipes. What matters is the gap above the unprocessed input.', y=1.01, fontsize=10)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'robustness_curves.png', dpi=140)
-        plt.show()
+        plt.close('all')
 
 
 def phase_metrics(ns):
@@ -403,7 +388,7 @@ def phase_metrics(ns):
         axs[0].invert_yaxis()
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'phase_metrics.png', dpi=140)
-        plt.show()
+        plt.close('all')
 
 
 def channel_ladder(ns):
@@ -428,7 +413,7 @@ def channel_ladder(ns):
         fig.suptitle(f'Channel-degradation ladder. {_refnote}A flatter line is a more robust model.', y=1.02, fontsize=10)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'channel_ladder.png', dpi=140)
-        plt.show()
+        plt.close('all')
     else:
         print('no R0-R4 rows - add the tiers to EVAL_BANKS and re-run')
 
@@ -459,7 +444,7 @@ def aurora_snr(ns):
         fig.suptitle(f'Noisy protocol.{_refnote}', y=1.01, fontsize=10)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'aurora_snr.png', dpi=140)
-        plt.show()
+        plt.close('all')
 
 
 def itu_metrics(ns):
@@ -495,7 +480,7 @@ def itu_metrics(ns):
         axs[0].invert_yaxis()
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'itu_metrics.png', dpi=140)
-        plt.show()
+        plt.close('all')
     else:
         print('no ITU columns - re-run training with the updated metrics module')
 
@@ -562,32 +547,28 @@ def stats_ci(ns):
                 fig.suptitle('Mean with 95% confidence interval. Black square = reference arm. Non-overlapping intervals are the claim.', y=1.02, fontsize=10)
                 fig.tight_layout()
                 fig.savefig(ns.FIGS / 'stats_ci.png', dpi=140)
-                plt.show()
+                plt.close('all')
     else:
         print('[skipped] no per_utt.csv found - the final evaluation writes it')
 
 
 def complexity(ns):
-    CX = [c for c in ('gen_M', 'disc_M', 'macs_g', 'flops_g', 'infer_ms', 'rtf') if c in ns.df.columns]
+    CX = [c for c in ('macs_g', 'flops_g', 'infer_ms', 'rtf') if c in ns.df.columns]
     t = ns.df[['name'] + CX].copy()
     t = t.rename(columns={'macs_g': 'GMACs', 'flops_g': 'GFLOPs', 'infer_ms': 'inference (ms/s audio)', 'rtf': 'RTF'})
     ns.display(t.set_index('name').round(4))
     t.to_csv(ns.WORK / 'complexity.csv', index=False)
     if 'rtf' in ns.df.columns and ns.df.rtf.notna().any():
-        fig, ax = plt.subplots(1, 2, figsize=(13, 5))
-        ax[0].scatter(ns.df.gen_M, ns.df.rtf.astype(float), s=70, c=ns.df.backbone.map(ns.colors).fillna('#bbb'))
-        for _, r in ns.df.iterrows():
-            ax[0].annotate(r['name'][:22], (r.gen_M, float(r.rtf)), fontsize=5, xytext=(3, 3), textcoords='offset points')
-        ax[0].axhline(1.0, c='r', ls='--', lw=1)
-        ax[0].text(ns.df.gen_M.min(), 1.02, 'RTF = 1: real time', fontsize=7, color='r')
+        fig, ax = plt.subplots(1, 1, figsize=(6.5, 5))
         m2 = 'pesq' if 'pesq' in ns.df else 'si_sdr'
-        ax[1].scatter(ns.df.rtf.astype(float), ns.df[m2].astype(float), s=70, c=ns.df.backbone.map(ns.colors).fillna('#bbb'))
+        ax.scatter(ns.df.rtf.astype(float), ns.df[m2].astype(float), s=70, c=ns.df.backbone.map(ns.colors).fillna('#bbb'))
         for _, r in ns.df.iterrows():
-            ax[1].annotate(r['name'][:22], (float(r.rtf), float(r[m2])), fontsize=5, xytext=(3, 3), textcoords='offset points')
-        ax[1].set(xlabel='RTF', ylabel=m2, title=f'{m2} against inference cost')
+            ax.annotate(r['name'][:22], (float(r.rtf), float(r[m2])), fontsize=5, xytext=(3, 3), textcoords='offset points')
+        ax.axvline(1.0, c='r', ls='--', lw=1)
+        ax.set(xlabel='RTF (1 = real time)', ylabel=m2, title=f'{m2} against inference cost')
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'complexity.png', dpi=140)
-        plt.show()
+        plt.close('all')
     else:
         print('RTF not recorded (install thop for MACs: pip install thop)')
 
@@ -639,7 +620,7 @@ def amplitude_spectrograms(ns):
         fig.colorbar(im, ax=axs[1], shrink=0.85, pad=0.015, label='dB (red = over-filled, blue = under-filled)')
         fig.suptitle('Amplitude: spectrograms (top) and signed error against the reference (bottom). Dotted line = input cutoff.', y=0.98, fontsize=10)
         fig.savefig(ns.FIGS / 'amplitude_spectrograms.png', dpi=140, bbox_inches='tight')
-        plt.show()
+        plt.close('all')
     else:
         print('no samples.pt - run training first')
 
@@ -666,7 +647,7 @@ def amplitude_ltas(ns):
         axs[1].legend(fontsize=6)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'amplitude_ltas.png', dpi=140)
-        plt.show()
+        plt.close('all')
 
 
 def amp_vs_phase(ns):
@@ -686,7 +667,7 @@ def amp_vs_phase(ns):
         fig.suptitle('Amplitude gain vs phase cost', y=1.01)
         fig.tight_layout()
         fig.savefig(ns.FIGS / 'amp_vs_phase.png', dpi=140)
-        plt.show()
+        plt.close('all')
 
 
-STEPS = [results, leaderboard, robustness_banks, per_recipe_heatmap, quality_vs_params, curves, lsd_bands, spectrograms, radar, robustness_curves, phase_metrics, channel_ladder, aurora_snr, itu_metrics, stats_ci, complexity, amplitude_spectrograms, amplitude_ltas, amp_vs_phase]
+STEPS = [results, leaderboard, robustness_banks, per_recipe_heatmap, curves, lsd_bands, spectrograms, radar, robustness_curves, phase_metrics, channel_ladder, aurora_snr, itu_metrics, stats_ci, complexity, amplitude_spectrograms, amplitude_ltas, amp_vs_phase]
